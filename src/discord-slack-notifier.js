@@ -447,55 +447,97 @@ async function main() {
 
   // Slackに実行サマリーを送信（確認メッセージ数が0より多い場合のみ）
   if (totalMessages > 0) {
-    const summaryMessage = {
-      text: '📊 Discord監視システム - 実行完了',
-      blocks: [
-        {
-          type: 'header',
-          text: {
-            type: 'plain_text',
-            text: '📊 Discord監視システム - 実行完了',
-            emoji: true
+    const summaryBlocks = [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: '📊 Discord監視システム - 実行完了',
+          emoji: true
+        }
+      },
+      {
+        type: 'section',
+        fields: [
+          {
+            type: 'mrkdwn',
+            text: `*実行時間:*\n${executionTime}秒`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*監視サーバー数:*\n${config.guildIds.length}`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*監視チャンネル数:*\n${totalChannels}`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*アクセス可能:*\n${totalChannels - skippedChannels}`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*確認メッセージ数:*\n${totalMessages}`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*キーワード検出数:*\n${matchedMessages} 件`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*エラー数:*\n${errors.length}`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*スキップ:*\n${skippedChannels} (権限なし)`
           }
-        },
-        {
-          type: 'section',
-          fields: [
+        ]
+      }
+    ];
+
+    // エラーがある場合、エラー詳細を追加
+    if (errors.length > 0) {
+      summaryBlocks.push({
+        type: 'divider'
+      });
+      
+      summaryBlocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: ':warning: *エラー詳細:*'
+        }
+      });
+
+      // エラーを最大10件まで表示
+      const errorList = errors.slice(0, 10).map((error, index) => {
+        return `${index + 1}. ${error}`;
+      }).join('\n');
+
+      summaryBlocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `\`\`\`${errorList}\`\`\``
+        }
+      });
+
+      if (errors.length > 10) {
+        summaryBlocks.push({
+          type: 'context',
+          elements: [
             {
               type: 'mrkdwn',
-              text: `*実行時間:*\n${executionTime}秒`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*監視サーバー数:*\n${config.guildIds.length}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*監視チャンネル数:*\n${totalChannels}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*アクセス可能:*\n${totalChannels - skippedChannels}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*確認メッセージ数:*\n${totalMessages}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*キーワード検出数:*\n${matchedMessages} 件`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*エラー数:*\n${errors.length}`
-            },
-            {
-              type: 'mrkdwn',
-              text: `*スキップ:*\n${skippedChannels} (権限なし)`
+              text: `_他 ${errors.length - 10} 件のエラーがあります。詳細はRenderログを確認してください。_`
             }
           ]
-        }
-      ]
+        });
+      }
+    }
+
+    const summaryMessage = {
+      text: '📊 Discord監視システム - 実行完了',
+      blocks: summaryBlocks
     };
 
     await sendSlackNotification(config.slackWebhookUrl, summaryMessage);
