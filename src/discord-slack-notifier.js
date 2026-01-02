@@ -168,6 +168,18 @@ async function processChannel(channel, guildId, guildName, config, cutoffTime) {
 
     return results;
   } catch (error) {
+    // 403エラー（アクセス権限なし）は警告として扱い、エラーカウントに含めない
+    if (error.message.includes('403')) {
+      return {
+        channelName: channel.name,
+        messageCount: 0,
+        matches: [],
+        error: null,  // 403エラーはnullとして扱う
+        skipped: true  // スキップフラグ
+      };
+    }
+    
+    // その他のエラーは通常通り記録
     return {
       channelName: channel.name,
       messageCount: 0,
@@ -294,6 +306,7 @@ async function main() {
   let totalChannels = 0;
   let totalMessages = 0;
   let matchedMessages = 0;
+  let skippedChannels = 0;
   const errors = [];
   const allMatches = [];
 
@@ -307,6 +320,12 @@ async function main() {
 
     for (const channelResult of guildResult.results) {
       totalMessages += channelResult.messageCount;
+      
+      // 403エラー（アクセス権限なし）はスキップとしてカウント
+      if (channelResult.skipped) {
+        skippedChannels++;
+        continue;
+      }
       
       if (channelResult.error) {
         errors.push(`チャンネル ${channelResult.channelName}: ${channelResult.error}`);
@@ -398,6 +417,8 @@ async function main() {
   console.log(`実行時間: ${executionTime}秒`);
   console.log(`監視サーバー数: ${config.guildIds.length}`);
   console.log(`監視チャンネル数: ${totalChannels}`);
+  console.log(`アクセス可能チャンネル数: ${totalChannels - skippedChannels}`);
+  console.log(`アクセス不可チャンネル数: ${skippedChannels} (プライベートチャンネル)`);
   console.log(`確認メッセージ数: ${totalMessages}`);
   console.log(`キーワード検出数: ${matchedMessages}`);
   console.log(`エラー数: ${errors.length}`);
@@ -438,6 +459,10 @@ async function main() {
           },
           {
             type: 'mrkdwn',
+            text: `*アクセス可能:*\n${totalChannels - skippedChannels}`
+          },
+          {
+            type: 'mrkdwn',
             text: `*確認メッセージ数:*\n${totalMessages}`
           },
           {
@@ -447,6 +472,10 @@ async function main() {
           {
             type: 'mrkdwn',
             text: `*エラー数:*\n${errors.length}`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*スキップ:*\n${skippedChannels} (権限なし)`
           }
         ]
       }
