@@ -1,0 +1,22 @@
+{
+  "name": "payment-notification-system",
+  "version": "1.0.0",
+  "description": "Discord メッセージを監視し、支払い関連キーワードを検出してSlackに通知するシステム",
+  "main": "src/discord-slack-notifier.js",
+  "scripts": {
+    "start": "node src/discord-slack-notifier.js",
+    "test": "node src/discord-slack-notifier.js"
+  },
+  "keywords": [
+    "discord",
+    "slack",
+    "notification",
+    "monitor",
+    "payment"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
