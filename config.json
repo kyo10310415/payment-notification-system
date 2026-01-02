@@ -41,5 +41,8 @@
     "引き落し",
     "引落"
   ],
+  "excludeKeywords": [
+    "サービスサイト"
+  ],
   "checkIntervalHours": 3
 }

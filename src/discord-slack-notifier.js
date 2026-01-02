@@ -9,6 +9,7 @@ function loadConfig() {
     slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
     guildIds: [],
     keywords: [],
+    excludeKeywords: [],
     checkIntervalHours: 3
   };
 
@@ -27,6 +28,7 @@ function loadConfig() {
       config.guildIds = fileConfig.guildIds || [];
     }
     config.keywords = fileConfig.keywords || [];
+    config.excludeKeywords = fileConfig.excludeKeywords || [];
     config.checkIntervalHours = fileConfig.checkIntervalHours || 3;
   }
 
@@ -120,6 +122,11 @@ function containsKeyword(content, keywords) {
   return keywords.some(keyword => content.includes(keyword));
 }
 
+// 除外キーワードが含まれているかチェック
+function shouldExcludeMessage(content, excludeKeywords) {
+  return excludeKeywords.some(keyword => content.includes(keyword));
+}
+
 // タイムスタンプをSnowflakeに変換（Discord IDから時刻を取得）
 function snowflakeToTimestamp(snowflake) {
   const DISCORD_EPOCH = 1420070400000;
@@ -153,6 +160,11 @@ async function processChannel(channel, guildId, guildName, config, cutoffTime) {
 
       // キーワードチェック
       if (containsKeyword(message.content, config.keywords)) {
+        // 除外キーワードチェック
+        if (shouldExcludeMessage(message.content, config.excludeKeywords)) {
+          continue; // 除外キーワードが含まれている場合はスキップ
+        }
+        
         const messageUrl = `https://discord.com/channels/${guildId}/${channel.id}/${message.id}`;
         
         results.matches.push({
@@ -279,6 +291,7 @@ async function main() {
   console.log(`\n📊 設定情報:`);
   console.log(`  - 監視サーバー数: ${config.guildIds.length}`);
   console.log(`  - 監視キーワード数: ${config.keywords.length}`);
+  console.log(`  - 除外キーワード数: ${config.excludeKeywords.length}`);
   console.log(`  - 監視期間: 過去 ${config.checkIntervalHours} 時間`);
   console.log(`  - 並列処理: 有効 (チャンネルごとに5並列)`);
 
