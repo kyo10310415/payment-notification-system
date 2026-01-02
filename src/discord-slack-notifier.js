@@ -346,17 +346,19 @@ async function main() {
     console.log(`    - 送信者: ${match.author}`);
     console.log(`    - メッセージ: ${match.content.substring(0, 50)}...`);
 
-    // Slack通知
+    // Slack通知（@channel メンション付き）
     const slackMessage = {
-      text: '💰 支払い関連メッセージが検出されました',
+      text: '<!channel> 💰 支払い関連メッセージが検出されました',
       blocks: [
         {
-          type: 'header',
+          type: 'section',
           text: {
-            type: 'plain_text',
-            text: '💰 支払い関連メッセージ検出',
-            emoji: true
+            type: 'mrkdwn',
+            text: '<!channel> :moneybag: *支払い関連メッセージ検出*'
           }
+        },
+        {
+          type: 'divider'
         },
         {
           type: 'section',
@@ -390,7 +392,7 @@ async function main() {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `<${match.messageUrl}|メッセージを開く>`
+            text: `<${match.messageUrl}|:link: メッセージを開く>`
           }
         },
         {
@@ -430,60 +432,66 @@ async function main() {
     });
   }
 
-  // Slackに実行サマリーを送信
-  const summaryMessage = {
-    text: '📊 Discord監視システム - 実行完了',
-    blocks: [
-      {
-        type: 'header',
-        text: {
-          type: 'plain_text',
-          text: '📊 Discord監視システム - 実行完了',
-          emoji: true
-        }
-      },
-      {
-        type: 'section',
-        fields: [
-          {
-            type: 'mrkdwn',
-            text: `*実行時間:*\n${executionTime}秒`
-          },
-          {
-            type: 'mrkdwn',
-            text: `*監視サーバー数:*\n${config.guildIds.length}`
-          },
-          {
-            type: 'mrkdwn',
-            text: `*監視チャンネル数:*\n${totalChannels}`
-          },
-          {
-            type: 'mrkdwn',
-            text: `*アクセス可能:*\n${totalChannels - skippedChannels}`
-          },
-          {
-            type: 'mrkdwn',
-            text: `*確認メッセージ数:*\n${totalMessages}`
-          },
-          {
-            type: 'mrkdwn',
-            text: `*キーワード検出数:*\n${matchedMessages} 件`
-          },
-          {
-            type: 'mrkdwn',
-            text: `*エラー数:*\n${errors.length}`
-          },
-          {
-            type: 'mrkdwn',
-            text: `*スキップ:*\n${skippedChannels} (権限なし)`
+  // Slackに実行サマリーを送信（確認メッセージ数が0より多い場合のみ）
+  if (totalMessages > 0) {
+    const summaryMessage = {
+      text: '📊 Discord監視システム - 実行完了',
+      blocks: [
+        {
+          type: 'header',
+          text: {
+            type: 'plain_text',
+            text: '📊 Discord監視システム - 実行完了',
+            emoji: true
           }
-        ]
-      }
-    ]
-  };
+        },
+        {
+          type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: `*実行時間:*\n${executionTime}秒`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*監視サーバー数:*\n${config.guildIds.length}`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*監視チャンネル数:*\n${totalChannels}`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*アクセス可能:*\n${totalChannels - skippedChannels}`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*確認メッセージ数:*\n${totalMessages}`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*キーワード検出数:*\n${matchedMessages} 件`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*エラー数:*\n${errors.length}`
+            },
+            {
+              type: 'mrkdwn',
+              text: `*スキップ:*\n${skippedChannels} (権限なし)`
+            }
+          ]
+        }
+      ]
+    };
 
-  await sendSlackNotification(config.slackWebhookUrl, summaryMessage);
-  console.log('\n✅ 実行完了');
+    await sendSlackNotification(config.slackWebhookUrl, summaryMessage);
+    console.log('\n✅ Slack通知送信完了');
+  } else {
+    console.log('\n⏭️  確認メッセージ数が0のため、Slack通知をスキップしました');
+  }
+  
+  console.log('✅ 実行完了');
   console.log('='.repeat(60));
 }
 
