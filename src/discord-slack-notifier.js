@@ -10,6 +10,7 @@ function loadConfig() {
     guildIds: [],
     keywords: [],
     excludeKeywords: [],
+    excludeUserIds: [],
     checkIntervalHours: 3
   };
 
@@ -29,6 +30,7 @@ function loadConfig() {
     }
     config.keywords = fileConfig.keywords || [];
     config.excludeKeywords = fileConfig.excludeKeywords || [];
+    config.excludeUserIds = fileConfig.excludeUserIds || [];
     config.checkIntervalHours = fileConfig.checkIntervalHours || 3;
   }
 
@@ -160,6 +162,11 @@ async function processChannel(channel, guildId, guildName, config, cutoffTime) {
 
       // キーワードチェック
       if (containsKeyword(message.content, config.keywords)) {
+        // 除外ユーザーIDチェック
+        if (config.excludeUserIds.includes(message.author.id)) {
+          continue; // 除外ユーザーの場合はスキップ
+        }
+        
         // 除外キーワードチェック
         if (shouldExcludeMessage(message.content, config.excludeKeywords)) {
           continue; // 除外キーワードが含まれている場合はスキップ
@@ -292,6 +299,7 @@ async function main() {
   console.log(`  - 監視サーバー数: ${config.guildIds.length}`);
   console.log(`  - 監視キーワード数: ${config.keywords.length}`);
   console.log(`  - 除外キーワード数: ${config.excludeKeywords.length}`);
+  console.log(`  - 除外ユーザー数: ${config.excludeUserIds.length}`);
   console.log(`  - 監視期間: 過去 ${config.checkIntervalHours} 時間`);
   console.log(`  - 並列処理: 有効 (チャンネルごとに5並列)`);
 

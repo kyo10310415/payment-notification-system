@@ -44,5 +44,8 @@
   "excludeKeywords": [
     "サービスサイト"
   ],
+  "excludeUserIds": [
+    "1371842840258285628"
+  ],
   "checkIntervalHours": 3
 }
