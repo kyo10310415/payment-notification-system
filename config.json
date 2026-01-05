@@ -45,7 +45,11 @@
     "サービスサイト"
   ],
   "excludeUserIds": [
-    "1371842840258285628"
+    "1371842840258285628",
+    "1423132417744441445"
+  ],
+  "excludeUsernames": [
+    "Captain Hook"
   ],
   "checkIntervalHours": 3
 }
