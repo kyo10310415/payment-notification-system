@@ -164,13 +164,24 @@ async function processChannel(channel, guildId, guildName, config, cutoffTime) {
 
       // キーワードチェック
       if (containsKeyword(message.content, config.keywords)) {
+        // デバッグ: Webhookの詳細情報をログ出力（一時的）
+        if (message.webhook_id) {
+          console.log(`  [Webhook検出] 名前: "${message.author.username}", ID: ${message.author.id}, Bot: ${message.author.bot}`);
+        }
+        
         // 除外ユーザーIDチェック
         if (config.excludeUserIds.includes(message.author.id)) {
           continue; // 除外ユーザーの場合はスキップ
         }
         
         // 除外ユーザー名チェック（Webhook含む）
-        if (config.excludeUsernames.includes(message.author.username)) {
+        // 完全一致だけでなく、部分一致もチェック
+        const isExcludedByUsername = config.excludeUsernames.some(username => 
+          message.author.username.includes(username) || username.includes(message.author.username)
+        );
+        
+        if (isExcludedByUsername) {
+          console.log(`  [除外] ユーザー名: "${message.author.username}" が除外リストに該当`);
           continue; // 除外ユーザー名の場合はスキップ
         }
         
