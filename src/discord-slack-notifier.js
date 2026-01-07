@@ -2,6 +2,51 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
+// 追跡メッセージのデータファイルパス
+const TRACKED_MESSAGES_FILE = path.join(__dirname, '..', 'tracked-messages.json');
+
+// 追跡メッセージデータの読み込み
+function loadTrackedMessages() {
+  if (fs.existsSync(TRACKED_MESSAGES_FILE)) {
+    try {
+      const data = fs.readFileSync(TRACKED_MESSAGES_FILE, 'utf8');
+      return JSON.parse(data);
+    } catch (error) {
+      console.error('⚠️  追跡メッセージファイルの読み込みエラー:', error.message);
+      return { messages: [] };
+    }
+  }
+  return { messages: [] };
+}
+
+// 追跡メッセージデータの保存
+function saveTrackedMessages(data) {
+  try {
+    fs.writeFileSync(TRACKED_MESSAGES_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (error) {
+    console.error('⚠️  追跡メッセージファイルの保存エラー:', error.message);
+  }
+}
+
+// 72時間以上経過したメッセージを削除
+function cleanupOldMessages(trackedData) {
+  const now = Date.now();
+  const maxAge = 72 * 60 * 60 * 1000; // 72時間
+  
+  const originalCount = trackedData.messages.length;
+  trackedData.messages = trackedData.messages.filter(msg => {
+    const detectedAt = new Date(msg.detectedAt).getTime();
+    return (now - detectedAt) < maxAge;
+  });
+  
+  const removedCount = originalCount - trackedData.messages.length;
+  if (removedCount > 0) {
+    console.log(`🗑️  72時間経過メッセージを削除: ${removedCount}件`);
+  }
+  
+  return trackedData;
+}
+
 // 環境変数または設定ファイルから設定を読み込む
 function loadConfig() {
   const config = {
@@ -121,6 +166,15 @@ function sendSlackNotification(webhookUrl, message) {
   });
 }
 
+// Slackスレッドに返信を送信
+async function sendSlackThreadReply(webhookUrl, threadTs, message) {
+  const payload = {
+    ...message,
+    thread_ts: threadTs
+  };
+  return sendSlackNotification(webhookUrl, payload);
+}
+
 // メッセージにキーワードが含まれているかチェック
 function containsKeyword(content, keywords) {
   return keywords.some(keyword => content.includes(keyword));
@@ -135,6 +189,64 @@ function shouldExcludeMessage(content, excludeKeywords) {
 function snowflakeToTimestamp(snowflake) {
   const DISCORD_EPOCH = 1420070400000;
   return Number(BigInt(snowflake) >> 22n) + DISCORD_EPOCH;
+}
+
+// メッセージのリアクションを取得
+async function getMessageReactions(channelId, messageId, token) {
+  try {
+    const message = await discordRequest(`/channels/${channelId}/messages/${messageId}`, token);
+    
+    if (!message.reactions || message.reactions.length === 0) {
+      return [];
+    }
+    
+    const reactions = [];
+    for (const reaction of message.reactions) {
+      // 各リアクションのユーザー一覧を取得
+      const emojiId = reaction.emoji.id ? `${reaction.emoji.name}:${reaction.emoji.id}` : reaction.emoji.name;
+      const users = await discordRequest(
+        `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emojiId)}`,
+        token
+      );
+      
+      reactions.push({
+        emoji: reaction.emoji.name || '❓',
+        count: reaction.count,
+        users: users.map(u => ({ id: u.id, username: u.username }))
+      });
+    }
+    
+    return reactions;
+  } catch (error) {
+    console.error(`⚠️  リアクション取得エラー (Message: ${messageId}):`, error.message);
+    return [];
+  }
+}
+
+// メッセージへの返信を取得
+async function getMessageReplies(channelId, messageId, token) {
+  try {
+    // チャンネルの最新メッセージを取得（返信を含む）
+    const messages = await discordRequest(`/channels/${channelId}/messages?limit=100`, token);
+    
+    // 特定のメッセージへの返信をフィルタリング
+    const replies = messages.filter(msg => 
+      msg.message_reference && msg.message_reference.message_id === messageId
+    );
+    
+    return replies.map(reply => ({
+      id: reply.id,
+      author: {
+        id: reply.author.id,
+        username: reply.author.username
+      },
+      content: reply.content,
+      timestamp: new Date(reply.timestamp).toISOString()
+    }));
+  } catch (error) {
+    console.error(`⚠️  返信取得エラー (Message: ${messageId}):`, error.message);
+    return [];
+  }
 }
 
 // チャンネルを並列処理する関数
@@ -193,6 +305,9 @@ async function processChannel(channel, guildId, guildName, config, cutoffTime) {
         const messageUrl = `https://discord.com/channels/${guildId}/${channel.id}/${message.id}`;
         
         results.matches.push({
+          messageId: message.id,
+          channelId: channel.id,
+          guildId,
           guildName,
           channelName: channel.name,
           author: message.author.username,
@@ -378,6 +493,12 @@ async function main() {
     }
   }
 
+  // 既存の追跡メッセージを読み込み
+  const trackedData = loadTrackedMessages();
+  
+  // 72時間以上経過したメッセージを削除
+  cleanupOldMessages(trackedData);
+
   // マッチしたメッセージをSlackに通知
   for (const match of allMatches) {
     console.log(`\n  🎯 キーワード検出!`);
@@ -442,12 +563,124 @@ async function main() {
     };
 
     try {
-      await sendSlackNotification(config.slackWebhookUrl, slackMessage);
+      const slackResponse = await sendSlackNotification(config.slackWebhookUrl, slackMessage);
       console.log(`    ✓ Slack通知送信完了`);
+      
+      // Slackのtimestampを抽出（スレッドIDとして使用）
+      let threadTs = null;
+      if (typeof slackResponse === 'string') {
+        try {
+          const parsed = JSON.parse(slackResponse);
+          threadTs = parsed.ts || null;
+        } catch (e) {
+          // JSON解析失敗の場合はnullのまま
+        }
+      }
+      
+      // 追跡メッセージとして保存
+      match.slackThreadTs = threadTs;
+      match.detectedAt = new Date().toISOString();
+      
+      // 追跡データに追加
+      trackedData.messages.push({
+        discordMessageId: match.messageId,
+        discordChannelId: match.channelId,
+        discordGuildId: match.guildId,
+        slackThreadTs: threadTs,
+        detectedAt: match.detectedAt,
+        lastCheckedAt: match.detectedAt,
+        notifiedReactions: [],
+        notifiedReplies: []
+      });
     } catch (error) {
       console.error(`    ❌ Slack通知エラー: ${error.message}`);
     }
   }
+  
+  // 既存の追跡メッセージのリアクション・返信をチェック
+  console.log(`\n🔍 追跡中のメッセージをチェック中... (${trackedData.messages.length}件)`);
+  
+  for (const trackedMsg of trackedData.messages) {
+    try {
+      // リアクションを取得
+      const reactions = await getMessageReactions(
+        trackedMsg.discordChannelId,
+        trackedMsg.discordMessageId,
+        config.discordToken
+      );
+      
+      // 新しいリアクションをチェック
+      for (const reaction of reactions) {
+        for (const user of reaction.users) {
+          const reactionKey = `${user.id}-${reaction.emoji}`;
+          
+          if (!trackedMsg.notifiedReactions.includes(reactionKey)) {
+            // 新しいリアクションを検出
+            console.log(`  👍 新しいリアクション検出: ${user.username} が ${reaction.emoji} でリアクション`);
+            
+            // Slackスレッドに通知
+            if (trackedMsg.slackThreadTs) {
+              const reactionMessage = {
+                text: `👍 ${user.username}さんが ${reaction.emoji} でリアクションしました`
+              };
+              
+              try {
+                await sendSlackThreadReply(config.slackWebhookUrl, trackedMsg.slackThreadTs, reactionMessage);
+                trackedMsg.notifiedReactions.push(reactionKey);
+                console.log(`    ✓ Slackスレッドに通知完了`);
+              } catch (error) {
+                console.error(`    ❌ Slackスレッド通知エラー: ${error.message}`);
+              }
+            }
+          }
+        }
+      }
+      
+      // 返信を取得
+      const replies = await getMessageReplies(
+        trackedMsg.discordChannelId,
+        trackedMsg.discordMessageId,
+        config.discordToken
+      );
+      
+      // 新しい返信をチェック
+      for (const reply of replies) {
+        if (!trackedMsg.notifiedReplies.includes(reply.id)) {
+          // 新しい返信を検出
+          console.log(`  💬 新しい返信検出: ${reply.author.username}`);
+          console.log(`    内容: ${reply.content.substring(0, 50)}...`);
+          
+          // Slackスレッドに通知
+          if (trackedMsg.slackThreadTs) {
+            const replyMessage = {
+              text: `💬 返信: ${reply.author.username}\n「${reply.content}」`
+            };
+            
+            try {
+              await sendSlackThreadReply(config.slackWebhookUrl, trackedMsg.slackThreadTs, replyMessage);
+              trackedMsg.notifiedReplies.push(reply.id);
+              console.log(`    ✓ Slackスレッドに通知完了`);
+            } catch (error) {
+              console.error(`    ❌ Slackスレッド通知エラー: ${error.message}`);
+            }
+          }
+        }
+      }
+      
+      // 最終チェック時刻を更新
+      trackedMsg.lastCheckedAt = new Date().toISOString();
+      
+      // レート制限対策
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+    } catch (error) {
+      console.error(`  ⚠️  メッセージ ${trackedMsg.discordMessageId} のチェックエラー: ${error.message}`);
+    }
+  }
+  
+  // 追跡メッセージデータを保存
+  saveTrackedMessages(trackedData);
+  console.log(`✓ 追跡データを保存しました (${trackedData.messages.length}件)`);
 
   // 実行結果サマリー
   const endTime = Date.now();

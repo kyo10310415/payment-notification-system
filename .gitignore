@@ -21,3 +21,9 @@ Thumbs.db
 
 # Config (if contains sensitive data)
 config.local.json
+
+# Tracked messages data (runtime data)
+tracked-messages.json
+
+# Tracked messages data
+tracked-messages.json
