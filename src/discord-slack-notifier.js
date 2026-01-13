@@ -218,7 +218,12 @@ async function getMessageReactions(channelId, messageId, token) {
     
     return reactions;
   } catch (error) {
-    console.error(`⚠️  リアクション取得エラー (Message: ${messageId}):`, error.message);
+    // 503エラー（タイムアウト）の場合は警告のみ
+    if (error.message.includes('503') || error.message.includes('timeout')) {
+      console.error(`  ⚠️  リアクション取得タイムアウト (Message: ${messageId}) - スキップ`);
+    } else {
+      console.error(`  ⚠️  リアクション取得エラー (Message: ${messageId}):`, error.message);
+    }
     return [];
   }
 }
@@ -244,7 +249,12 @@ async function getMessageReplies(channelId, messageId, token) {
       timestamp: new Date(reply.timestamp).toISOString()
     }));
   } catch (error) {
-    console.error(`⚠️  返信取得エラー (Message: ${messageId}):`, error.message);
+    // 503エラー（タイムアウト）の場合は警告のみ
+    if (error.message.includes('503') || error.message.includes('timeout')) {
+      console.error(`  ⚠️  返信取得タイムアウト (Message: ${messageId}) - スキップ`);
+    } else {
+      console.error(`  ⚠️  返信取得エラー (Message: ${messageId}):`, error.message);
+    }
     return [];
   }
 }
@@ -327,6 +337,17 @@ async function processChannel(channel, guildId, guildName, config, cutoffTime) {
         messageCount: 0,
         matches: [],
         error: null,  // 403エラーはnullとして扱う
+        skipped: true  // スキップフラグ
+      };
+    }
+    
+    // 503エラー（タイムアウト）も警告として扱い、エラーカウントに含めない
+    if (error.message.includes('503') || error.message.includes('timeout')) {
+      return {
+        channelName: channel.name,
+        messageCount: 0,
+        matches: [],
+        error: null,  // 503エラーはnullとして扱う
         skipped: true  // スキップフラグ
       };
     }
@@ -670,11 +691,16 @@ async function main() {
       // 最終チェック時刻を更新
       trackedMsg.lastCheckedAt = new Date().toISOString();
       
-      // レート制限対策
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // レート制限対策（待機時間を1秒に増加）
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (error) {
-      console.error(`  ⚠️  メッセージ ${trackedMsg.discordMessageId} のチェックエラー: ${error.message}`);
+      // 503エラー（タイムアウト）の場合は詳細ログをスキップ
+      if (error.message.includes('503') || error.message.includes('timeout')) {
+        console.error(`  ⚠️  メッセージ ${trackedMsg.discordMessageId} のチェックタイムアウト - スキップ`);
+      } else {
+        console.error(`  ⚠️  メッセージ ${trackedMsg.discordMessageId} のチェックエラー: ${error.message}`);
+      }
     }
   }
   
