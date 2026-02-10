@@ -5,9 +5,10 @@ Discord の複数サーバーを監視し、支払い関連のキーワードが
 ## 📋 概要
 
 - **監視対象**: 29の Discord サーバー（合計約12,000チャンネル以上）
-- **実行頻度**: 1日2回（AM10時とPM10時、UTC基準では 01:00 と 13:00）
+- **実行頻度**: 1日2回（AM9時とPM9時、JST基準）
 - **監視期間**: 実行時刻から過去12時間以内のメッセージ
 - **検出キーワード**: 支払い、支払、振込、振り込み、振込み、入金、引き落とし、引き落し、引落
+- **除外キーワード**: サービスサイト、重要
 - **通知先**: Slack（Webhook経由）
 
 ## ✨ 特徴
@@ -67,7 +68,7 @@ cd payment-notification-system
    - **Name**: `discord-payment-notifier`
    - **Environment**: `Node`
    - **Command**: `node src/discord-slack-notifier.js`
-   - **Schedule**: `0 1,13 * * *` (日本時間 AM 10:00 と PM 10:00)
+   - **Schedule**: `0 0,12 * * *` (日本時間 AM 9:00 と PM 9:00)
 
 5. **環境変数を設定**
    
@@ -112,7 +113,8 @@ Render のダッシュボードから「Trigger Run」をクリックして、�
     "引落"
   ],
   "excludeKeywords": [
-    "サービスサイト"
+    "サービスサイト",
+    "重要"
   ],
   "excludeUserIds": [
     "1371842840258285628",
