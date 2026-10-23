@@ -5,7 +5,7 @@
   "main": "src/discord-slack-notifier.js",
   "scripts": {
     "start": "node src/discord-slack-notifier.js",
-    "test": "node src/discord-slack-notifier.js"
+    "test": "node --test test/*.test.js"
   },
   "keywords": [
     "discord",
