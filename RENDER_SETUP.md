@@ -49,7 +49,7 @@
 
 | 項目 | 値 |
 |------|-----|
-| **Build Command** | （空欄でOK） |
+| **Build Command** | `npm ci` |
 | **Start Command** | `node src/discord-slack-notifier.js` |
 
 ### 3.3 スケジュール設定
@@ -289,7 +289,7 @@ TZ=Asia/Tokyo
 ### Q1: デプロイが失敗する
 
 **A:** ログを確認して、以下を試してください：
-- Build Command は空欄にする
+- Build Command は `npm ci` にする
 - Start Command が `node src/discord-slack-notifier.js` になっているか確認
 - Branch が `main` になっているか確認
 

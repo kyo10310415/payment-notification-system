@@ -1,6 +1,7 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { logEvent } = require('./operational-log');
 
 // 追跡メッセージのデータファイルパス
 const TRACKED_MESSAGES_FILE = path.join(__dirname, '..', 'tracked-messages.json');
@@ -12,7 +13,7 @@ function loadTrackedMessages() {
       const data = fs.readFileSync(TRACKED_MESSAGES_FILE, 'utf8');
       return JSON.parse(data);
     } catch (error) {
-      console.error('⚠️  追跡メッセージファイルの読み込みエラー:', error.message);
+      logEvent('operation-failed');
       return { messages: [] };
     }
   }
@@ -24,7 +25,7 @@ function saveTrackedMessages(data) {
   try {
     fs.writeFileSync(TRACKED_MESSAGES_FILE, JSON.stringify(data, null, 2), 'utf8');
   } catch (error) {
-    console.error('⚠️  追跡メッセージファイルの保存エラー:', error.message);
+    logEvent('operation-failed');
   }
 }
 
@@ -220,9 +221,9 @@ async function getMessageReactions(channelId, messageId, token) {
   } catch (error) {
     // 503エラー（タイムアウト）の場合は警告のみ
     if (error.message.includes('503') || error.message.includes('timeout')) {
-      console.error(`  ⚠️  リアクション取得タイムアウト (Message: ${messageId}) - スキップ`);
+      logEvent('operation-failed');
     } else {
-      console.error(`  ⚠️  リアクション取得エラー (Message: ${messageId}):`, error.message);
+      logEvent('operation-failed');
     }
     return [];
   }
@@ -251,9 +252,9 @@ async function getMessageReplies(channelId, messageId, token) {
   } catch (error) {
     // 503エラー（タイムアウト）の場合は警告のみ
     if (error.message.includes('503') || error.message.includes('timeout')) {
-      console.error(`  ⚠️  返信取得タイムアウト (Message: ${messageId}) - スキップ`);
+      logEvent('operation-failed');
     } else {
-      console.error(`  ⚠️  返信取得エラー (Message: ${messageId}):`, error.message);
+      logEvent('operation-failed');
     }
     return [];
   }
@@ -286,9 +287,9 @@ async function processChannel(channel, guildId, guildName, config, cutoffTime) {
 
       // キーワードチェック
       if (containsKeyword(message.content, config.keywords)) {
-        // デバッグ: Webhookの詳細情報をログ出力（一時的）
+        // Webhook検出は個人情報なしの運用イベントだけ記録
         if (message.webhook_id) {
-          console.log(`  [Webhook検出] 名前: "${message.author.username}", ID: ${message.author.id}, Bot: ${message.author.bot}`);
+          logEvent('message-filtered', message.id);
         }
         
         // 除外ユーザーIDチェック
@@ -303,7 +304,7 @@ async function processChannel(channel, guildId, guildName, config, cutoffTime) {
         );
         
         if (isExcludedByUsername) {
-          console.log(`  [除外] ユーザー名: "${message.author.username}" が除外リストに該当`);
+          logEvent('message-filtered', message.id);
           continue; // 除外ユーザー名の場合はスキップ
         }
         
@@ -369,7 +370,7 @@ async function processGuild(guildId, guildIndex, totalGuilds, config, cutoffTime
   try {
     // サーバー情報取得
     const guild = await discordRequest(`/guilds/${guildId}`, config.discordToken);
-    console.log(`\n[${guildIndex + 1}/${totalGuilds}] サーバー ${guildId} (${guild.name}) を処理中...`);
+    logEvent('guild-processing', guildId);
 
     // チャンネル一覧取得
     const channels = await discordRequest(`/guilds/${guildId}/channels`, config.discordToken);
@@ -410,7 +411,7 @@ async function processGuild(guildId, guildIndex, totalGuilds, config, cutoffTime
     };
 
   } catch (error) {
-    console.error(`  ❌ エラー: ${error.message}`);
+    logEvent('operation-failed');
     return {
       guildId,
       guildName: null,
@@ -522,11 +523,7 @@ async function main() {
 
   // マッチしたメッセージをSlackに通知
   for (const match of allMatches) {
-    console.log(`\n  🎯 キーワード検出!`);
-    console.log(`    - サーバー: ${match.guildName}`);
-    console.log(`    - チャンネル: #${match.channelName}`);
-    console.log(`    - 送信者: ${match.author}`);
-    console.log(`    - メッセージ: ${match.content.substring(0, 50)}...`);
+    logEvent('payment-detected', match.messageId);
 
     // Slack通知（@channel メンション付き）
     const slackMessage = {
@@ -614,7 +611,7 @@ async function main() {
         notifiedReplies: []
       });
     } catch (error) {
-      console.error(`    ❌ Slack通知エラー: ${error.message}`);
+      logEvent('operation-failed');
     }
   }
   
@@ -637,7 +634,7 @@ async function main() {
           
           if (!trackedMsg.notifiedReactions.includes(reactionKey)) {
             // 新しいリアクションを検出
-            console.log(`  👍 新しいリアクション検出: ${user.username} が ${reaction.emoji} でリアクション`);
+            logEvent('reaction-detected', trackedMsg.discordMessageId);
             
             // Slackスレッドに通知
             if (trackedMsg.slackThreadTs) {
@@ -650,7 +647,7 @@ async function main() {
                 trackedMsg.notifiedReactions.push(reactionKey);
                 console.log(`    ✓ Slackスレッドに通知完了`);
               } catch (error) {
-                console.error(`    ❌ Slackスレッド通知エラー: ${error.message}`);
+                logEvent('operation-failed');
               }
             }
           }
@@ -668,8 +665,7 @@ async function main() {
       for (const reply of replies) {
         if (!trackedMsg.notifiedReplies.includes(reply.id)) {
           // 新しい返信を検出
-          console.log(`  💬 新しい返信検出: ${reply.author.username}`);
-          console.log(`    内容: ${reply.content.substring(0, 50)}...`);
+          logEvent('reply-detected', trackedMsg.discordMessageId);
           
           // Slackスレッドに通知
           if (trackedMsg.slackThreadTs) {
@@ -682,7 +678,7 @@ async function main() {
               trackedMsg.notifiedReplies.push(reply.id);
               console.log(`    ✓ Slackスレッドに通知完了`);
             } catch (error) {
-              console.error(`    ❌ Slackスレッド通知エラー: ${error.message}`);
+              logEvent('operation-failed');
             }
           }
         }
@@ -697,9 +693,9 @@ async function main() {
     } catch (error) {
       // 503エラー（タイムアウト）の場合は詳細ログをスキップ
       if (error.message.includes('503') || error.message.includes('timeout')) {
-        console.error(`  ⚠️  メッセージ ${trackedMsg.discordMessageId} のチェックタイムアウト - スキップ`);
+        logEvent('operation-failed');
       } else {
-        console.error(`  ⚠️  メッセージ ${trackedMsg.discordMessageId} のチェックエラー: ${error.message}`);
+        logEvent('operation-failed');
       }
     }
   }
@@ -724,12 +720,7 @@ async function main() {
   console.log(`キーワード検出数: ${matchedMessages}`);
   console.log(`エラー数: ${errors.length}`);
 
-  if (errors.length > 0) {
-    console.log('\n⚠️  エラー詳細:');
-    errors.forEach((error, index) => {
-      console.log(`  ${index + 1}. ${error}`);
-    });
-  }
+  // Detailed errors stay out of operational logs; the count above is sufficient.
 
   // Slackに実行サマリーを送信（確認メッセージ数が0より多い場合のみ）
   if (totalMessages > 0) {
@@ -837,7 +828,7 @@ async function main() {
 }
 
 // スクリプト実行
-main().catch(error => {
-  console.error('❌ 致命的なエラー:', error);
+if (require.main === module) main().catch(error => {
+  logEvent('operation-failed');
   process.exit(1);
 });
