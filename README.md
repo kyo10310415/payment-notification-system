@@ -2,7 +2,7 @@
 
 ## Node.jsの実行バージョン
 
-`.node-version` の Node.js 22.23.4 をローカルとRenderで使用します。
+`.node-version` の Node.js 22.23.5 をローカルとRenderで使用します。
 Renderに `NODE_VERSION` がある場合はそちらが優先されるため、配備ログで
 採用版を確認してください。更新時は隔離環境で `npm ci --ignore-scripts` と
 `npm test` を確認します。版確認のためのCron手動実行は行いません。
